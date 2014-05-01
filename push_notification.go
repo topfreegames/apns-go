@@ -16,11 +16,6 @@ const pushCommandValue = 2
 // Your total notification payload cannot exceed 2 KB.
 const MaxPayloadSizeBytes = 2048
 
-// Every push notification gets a pseudo-unique identifier;
-// this establishes the upper boundary for it. Apple will return
-// this identifier if there is an issue sending your notification.
-const IdentifierUbound = 9999
-
 // Constants related to the payload fields and their lengths.
 const (
 	deviceTokenItemid            = 1
