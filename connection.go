@@ -113,6 +113,7 @@ func (conn *Connection) sender(queue <-chan PushNotification, sent chan PushNoti
 	stopping := false
 	defer conn.conn.Close()
 	var backoff = time.Duration(100)
+	log.Println("Starting sender")
 	for {
 		select {
 		case pn, ok := <-conn.queue:
