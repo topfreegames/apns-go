@@ -76,6 +76,7 @@ func (pn PushNotification) timed() timedPushNotification {
 func (conn *Connection) Enqueue(pn *PushNotification) {
 	go func(pn *PushNotification) {
 		conn.queue <- *pn
+		log.Println("enqueued")
 	}(pn)
 }
 
@@ -115,6 +116,7 @@ func (conn *Connection) sender(queue <-chan PushNotification, sent chan PushNoti
 	for {
 		select {
 		case pn, ok := <-conn.queue:
+			log.Println("Got a PN to send")
 			if !ok {
 				log.Println("Not okay; queue closed.")
 				//That means the Connection is stopped
