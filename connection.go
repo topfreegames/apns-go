@@ -112,7 +112,6 @@ func (conn *Connection) sender(queue <-chan PushNotification, sent chan PushNoti
 	i := 0
 	stopping := false
 	defer conn.conn.Close()
-	var backoff = time.Duration(100)
 	log.Println("Starting sender")
 	for {
 		select {
@@ -129,23 +128,7 @@ func (conn *Connection) sender(queue <-chan PushNotification, sent chan PushNoti
 			case <-conn.shouldReconnect:
 				conn.conn.Close()
 				conn.conn = nil
-				for {
-					log.Println("Connection lost; reconnecting.")
-					err := conn.connect()
-					if err != nil {
-						//Exponential backoff up to a limit
-						log.Println("APNS: Error connecting to server: ", err)
-						backoff = backoff * 2
-						if backoff > maxBackoff {
-							backoff = maxBackoff
-						}
-						time.Sleep(backoff)
-					} else {
-						backoff = 100
-						log.Println("Connected...")
-						break
-					}
-				}
+				conn.spinUntilReconnect()
 			default:
 			}
 			//Then send the push notification
@@ -154,6 +137,9 @@ func (conn *Connection) sender(queue <-chan PushNotification, sent chan PushNoti
 				log.Println(err)
 				//Should report this on the bad notifications channel probably
 			} else {
+				if conn.conn == nil {
+					conn.spinUntilReconnect()
+				}
 				n, err := conn.conn.Write(payload)
 				if err != nil {
 					log.Println(err)
@@ -332,4 +318,25 @@ func (conn *Connection) connect() error {
 	//Start reader goroutine
 	go conn.reader(conn.responses)
 	return nil
+}
+
+func (c *Connection) spinUntilReconnect() {
+	var backoff = time.Duration(100)
+	for {
+		log.Println("Connection lost; reconnecting.")
+		err := c.connect()
+		if err != nil {
+			//Exponential backoff up to a limit
+			log.Println("APNS: Error connecting to server: ", err)
+			backoff = backoff * 2
+			if backoff > maxBackoff {
+				backoff = maxBackoff
+			}
+			time.Sleep(backoff)
+		} else {
+			backoff = 100
+			log.Println("Connected...")
+			break
+		}
+	}
 }
