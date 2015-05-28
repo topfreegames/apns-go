@@ -76,7 +76,6 @@ func (pn PushNotification) timed() timedPushNotification {
 func (conn *Connection) Enqueue(pn *PushNotification) {
 	go func(pn *PushNotification) {
 		conn.queue <- *pn
-		log.Println("enqueued")
 	}(pn)
 }
 
@@ -226,7 +225,6 @@ func (conn *Connection) limbo(sent <-chan PushNotification, responses chan Respo
 				//that means we're shutting down the connection.
 			}
 			log.Println("Saw an error response; flushing up to", resp.Identifier)
-			log.Println("PNs in limbo:", len(limbo))
 			for i, pn := range limbo {
 				if pn.Identifier == resp.Identifier {
 					log.Println("Got the bad one!!! At index:", i, "identifier:", pn.Identifier)
@@ -251,20 +249,17 @@ func (conn *Connection) limbo(sent <-chan PushNotification, responses chan Respo
 			limbo = make([]timedPushNotification, 0, SentBufferSize)
 		case <-ticker.C:
 			flushed := false
-			log.Println("Notifications in limbo:", len(limbo))
 			for i := range limbo {
 				if limbo[i].After(time.Now().Add(-TimeoutSeconds * time.Second)) {
 					log.Printf("The first %d notifications timed out ok.\n", i)
 					newLimbo := make([]timedPushNotification, len(limbo[i:]), SentBufferSize)
 					copy(newLimbo, limbo[i:])
 					limbo = newLimbo
-					log.Println("Size of limbo is now:", len(limbo))
 					flushed = true
 					break
 				}
 			}
 			if !flushed {
-				log.Println("Looks like every notification has timed out.")
 				limbo = make([]timedPushNotification, 0, SentBufferSize)
 			}
 			if stopping && len(limbo) == 0 {
