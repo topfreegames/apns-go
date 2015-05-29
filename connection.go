@@ -115,7 +115,6 @@ func (conn *Connection) sender(queue <-chan PushNotification, sent chan PushNoti
 	for {
 		select {
 		case pn, ok := <-conn.queue:
-			log.Println("Got a PN to send")
 			if !ok {
 				log.Println("Not okay; queue closed.")
 				//That means the Connection is stopped
@@ -139,7 +138,7 @@ func (conn *Connection) sender(queue <-chan PushNotification, sent chan PushNoti
 				if conn.conn == nil {
 					conn.spinUntilReconnect()
 				}
-				n, err := conn.conn.Write(payload)
+				_, err := conn.conn.Write(payload)
 				if err != nil {
 					log.Println(err)
 					go func() {
@@ -148,8 +147,7 @@ func (conn *Connection) sender(queue <-chan PushNotification, sent chan PushNoti
 					//Disconnect?
 				} else {
 					i++
-					log.Println("Sent count:", i)
-					log.Println("Wrote bytes:", n, "of notification:", pn.Identifier)
+					log.Println("APNS: Sent count:", i)
 					sent <- pn
 					if stopping && len(queue) == 0 {
 						log.Println("sender: I'm stopping and I've run out of things to send. Let's see if limbo is empty.")
@@ -251,12 +249,14 @@ func (conn *Connection) limbo(sent <-chan PushNotification, responses chan Respo
 			flushed := false
 			for i := range limbo {
 				if limbo[i].After(time.Now().Add(-TimeoutSeconds * time.Second)) {
-					log.Printf("The first %d notifications timed out ok.\n", i)
-					newLimbo := make([]timedPushNotification, len(limbo[i:]), SentBufferSize)
-					copy(newLimbo, limbo[i:])
-					limbo = newLimbo
-					flushed = true
-					break
+					if i > 0 {
+						log.Printf("The first %d notifications timed out ok.\n", i)
+						newLimbo := make([]timedPushNotification, len(limbo[i:]), SentBufferSize)
+						copy(newLimbo, limbo[i:])
+						limbo = newLimbo
+						flushed = true
+						break
+					}
 				}
 			}
 			if !flushed {
