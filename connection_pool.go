@@ -2,6 +2,7 @@ package apns
 
 import "crypto/tls"
 import "strings"
+import "time"
 
 type ConnectionPool struct {
 	NumConnections int
@@ -21,9 +22,10 @@ func NewConnectionPool(numConnections int, gateway string, certificate tls.Certi
 	}
 
 	connections := make(chan *Connection, numConnections)
-
+	responseQueue := make(chan []byte, 1000)
+	
 	for i := numConnections; i >= 1; i-- {
-		newConnection := NewConnection(gateway, config, 5)					
+		newConnection := NewConnection(gateway, config, 2 * time.Second, responseQueue)					
 		newConnection.Connect()
 		connections <- newConnection
 	}
@@ -34,7 +36,7 @@ func NewConnectionPool(numConnections int, gateway string, certificate tls.Certi
 		TlsConfig: config,
 		connections: connections,
 		pushQueue: make(chan *PushNotification, numConnections * 2),
-		responseQueue: make(chan []byte),
+		responseQueue: responseQueue,
 	}
 }
 
@@ -42,25 +44,49 @@ func (connection_pool *ConnectionPool) Start() {
 	go connection_pool.sendLoop()
 }
 
+func (connection_pool *ConnectionPool) GetResponses() chan []byte {
+	return connection_pool.responseQueue
+}
+
 func (connection_pool *ConnectionPool) SendMessage(pushNotification *PushNotification) {
 	connection_pool.pushQueue <- pushNotification
 }
 
-func (connection_pool *ConnectionPool) acquireConnection() *Connection {
+func (connection_pool *ConnectionPool) getConnection() *Connection {
 	connection := <- connection_pool.connections
 	return connection
 }
 
-func (connection_pool *ConnectionPool) putConnection(connection *Connection) {
+func (connection_pool *ConnectionPool) releaseConnection(connection *Connection) {
 	connection_pool.connections <- connection
+}
+
+func (connection_pool *ConnectionPool) acquireNewConnection() {
+	newConnection := NewConnection(
+		connection_pool.Gateway,
+		connection_pool.TlsConfig,
+		2 * time.Second,
+		connection_pool.responseQueue)
+	newConnection.Connect()
+	defer connection_pool.releaseConnection(newConnection)
 }
 
 func (connection_pool *ConnectionPool) sendLoop() {
 	for push := range connection_pool.pushQueue {
-		connection := connection_pool.acquireConnection()
-		connection.Send(push)
-		connection_pool.putConnection(connection)
+		connection := connection_pool.getConnection()
+		go connection_pool.sendPush(push, connection)
 	}
+}
+
+func (connection_pool *ConnectionPool) sendPush(push *PushNotification, connection *Connection) {
+	err := connection.Send(push)
+	if err != nil {
+		connection.Disconnect()
+		connection_pool.acquireNewConnection()
+		connection_pool.pushQueue <- push
+		return
+	}
+	connection_pool.releaseConnection(connection)
 }
 
 

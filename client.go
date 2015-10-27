@@ -6,6 +6,7 @@ import (
 	"net"
 	"strings"
 	"time"
+	"sync"
 )
 
 var _ APNSClient = &Client{}
@@ -27,11 +28,12 @@ type APNSClient interface {
 // but if you prefer you can use the CertificateBase64
 // and KeyBase64 fields to store the actual contents.
 type Client struct {
+	sync.Mutex
 	Gateway           string
 	CertificateFile   string
-	CertificateBase64 string
+	CertificateBase64 []byte
 	KeyFile           string
-	KeyBase64         string
+	KeyBase64         []byte
 	NumConnections    int
 	certificate       tls.Certificate
 	pool              *ConnectionPool
@@ -39,7 +41,7 @@ type Client struct {
 
 // BareClient can be used to set the contents of your
 // certificate and key blocks manually.
-func BareClient(gateway, certificateBase64, keyBase64 string) (c *Client) {
+func BareClient(gateway string, certificateBase64 []byte, keyBase64 []byte) (c *Client) {
 	c = new(Client)
 	c.Gateway = gateway
 	c.CertificateBase64 = certificateBase64
@@ -59,6 +61,14 @@ func NewClient(gateway, certificateFile, keyFile string) (c *Client) {
 	return
 }
 
+func (client *Client) GetResponses() chan []byte {
+	pool, err := client.getConnectionPool()
+	if err != nil {
+		return nil
+	}
+	return pool.GetResponses()
+}
+
 func (client *Client) SendAsync(pn *PushNotification) error {
 	pool, err := client.getConnectionPool()
 	if err != nil {
@@ -69,6 +79,8 @@ func (client *Client) SendAsync(pn *PushNotification) error {
 }
 
 func (client *Client) getConnectionPool() (*ConnectionPool, error) {
+	client.Lock()
+	defer client.Unlock()
 	if client.pool != nil {
 		return client.pool, nil
 	}
@@ -85,11 +97,12 @@ func (client *Client) getConnectionPool() (*ConnectionPool, error) {
 
 func (client *Client) getCertificate() error {
 	var err error
+	
 	if client.certificate.PrivateKey == nil {
-		if len(client.CertificateBase64) == 0 && len(client.KeyBase64) == 0 {
+		if len(client.CertificateBase64) == 0 && len(client.KeyBase64) == 0 {			
 			client.certificate, err = tls.LoadX509KeyPair(client.CertificateFile, client.KeyFile)
 		} else {
-			client.certificate, err = tls.X509KeyPair([]byte(client.CertificateBase64), []byte(client.KeyBase64))
+			client.certificate, err = tls.X509KeyPair(client.CertificateBase64, client.KeyBase64)
 		}
 	}
 	return err

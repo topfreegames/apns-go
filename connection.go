@@ -2,13 +2,16 @@ package apns
 
 import "crypto/tls"
 import "net"
+import "time"
 
 // Abstracts a connection to a push notification gateway.
 type Connection struct {
 	gateway        string
-	timeoutSeconds uint8
+	timeoutResponse time.Duration
 
 	TlsConfig *tls.Config
+
+	responses chan []byte
 	
 	tcpConnection  net.Conn
 	socket         *tls.Conn
@@ -19,19 +22,15 @@ type Connection struct {
 //
 // Returns a Connection struct with the gateway configured and the
 // push notification response timeout set to TIMEOUT_SECONDS.
-func NewConnection(gateway string, config *tls.Config, timeoutSeconds uint8) (c *Connection) {
+func NewConnection(gateway string, config *tls.Config, timeoutResponse time.Duration, responses chan []byte) (c *Connection) {
 	c = new(Connection)
 	c.gateway = gateway
 	c.TlsConfig = config
-	c.timeoutSeconds = timeoutSeconds
+	c.timeoutResponse = timeoutResponse
+	c.responses = responses
 	return
 }
 
-// Sets the number of seconds to wait for the gateway to respond
-// after sending a push notification.
-func (connection *Connection) SetTimeoutSeconds(seconds uint8) {
-	connection.timeoutSeconds = seconds
-}
 
 // Creates and sets connections to the gateway. Apple treats repeated
 // connections / disconnections as a potential DoS attack; you should
@@ -50,7 +49,13 @@ func (connection *Connection) Connect() (err error) {
 	}
 	connection.tcpConnection = conn
 	connection.socket = tlsConn
+
 	return nil
+}
+
+func (connection *Connection) Reconnect() (err error) {
+	connection.Disconnect()
+	return connection.Connect()
 }
 
 // Attempts to send a push notification to the connection's gateway.
@@ -62,23 +67,33 @@ func (connection *Connection) Connect() (err error) {
 //
 // Returns a PushNotificationResponse indicating success / failure and what
 // error occurred, if any.
-func (connection *Connection) Send(pn *PushNotification) (resp *PushNotificationResponse) {
-	resp = new(PushNotificationResponse)
-	resp.Success = false
-
+func (connection *Connection) Send(pn *PushNotification) error {
 	payload, err := pn.ToBytes()
 	if err != nil {
-		resp.Error = err
-		return
+		return nil
 	}
 
 	_, err = connection.socket.Write(payload)
 	if err != nil {
-		resp.Error = err
-		return
+		return err
 	}
+	go connection.Rec()
+	
+	return nil
+}
 
-	return resp
+func (connection *Connection) Rec()  {
+	responseChan := make(chan []byte, 1)
+	go func() {
+		buffer := make([]byte, 6, 6)
+		connection.socket.Read(buffer)
+		responseChan <- buffer
+	}()
+	select {
+	case buffer := <- responseChan:
+		connection.responses <- []byte(APPLE_PUSH_RESPONSES[buffer[1]])
+	case <- time.After(5 * time.Second):
+	}
 }
 
 // Disconnects from the gateway.
