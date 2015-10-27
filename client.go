@@ -32,6 +32,9 @@ type Client struct {
 	CertificateBase64 string
 	KeyFile           string
 	KeyBase64         string
+	NumConnections    int
+	certificate       tls.Certificate
+	pool              *ConnectionPool
 }
 
 // BareClient can be used to set the contents of your
@@ -41,6 +44,7 @@ func BareClient(gateway, certificateBase64, keyBase64 string) (c *Client) {
 	c.Gateway = gateway
 	c.CertificateBase64 = certificateBase64
 	c.KeyBase64 = keyBase64
+	c.NumConnections = 5
 	return
 }
 
@@ -51,7 +55,44 @@ func NewClient(gateway, certificateFile, keyFile string) (c *Client) {
 	c.Gateway = gateway
 	c.CertificateFile = certificateFile
 	c.KeyFile = keyFile
+	c.NumConnections = 5
 	return
+}
+
+func (client *Client) SendAsync(pn *PushNotification) error {
+	pool, err := client.getConnectionPool()
+	if err != nil {
+		return err
+	}
+	pool.SendMessage(pn)
+	return nil
+}
+
+func (client *Client) getConnectionPool() (*ConnectionPool, error) {
+	if client.pool != nil {
+		return client.pool, nil
+	}
+	err := client.getCertificate()
+	if err != nil {
+		return nil, err
+	} else {
+		client.pool = NewConnectionPool(client.NumConnections, client.Gateway, client.certificate)
+		client.pool.Start()
+	}
+
+	return client.pool, err
+}
+
+func (client *Client) getCertificate() error {
+	var err error
+	if client.certificate.PrivateKey == nil {
+		if len(client.CertificateBase64) == 0 && len(client.KeyBase64) == 0 {
+			client.certificate, err = tls.LoadX509KeyPair(client.CertificateFile, client.KeyFile)
+		} else {
+			client.certificate, err = tls.X509KeyPair([]byte(client.CertificateBase64), []byte(client.KeyBase64))
+		}
+	}
+	return err
 }
 
 // Send connects to the APN service and sends your push notification.

@@ -1,17 +1,15 @@
 package apns
 
-import (
-	"crypto/tls"
-	"net"
-	"time"
-)
+import "crypto/tls"
+import "net"
 
 // Abstracts a connection to a push notification gateway.
 type Connection struct {
 	gateway        string
 	timeoutSeconds uint8
 
-	tlsCertificate tls.Certificate
+	TlsConfig *tls.Config
+	
 	tcpConnection  net.Conn
 	socket         *tls.Conn
 }
@@ -21,10 +19,11 @@ type Connection struct {
 //
 // Returns a Connection struct with the gateway configured and the
 // push notification response timeout set to TIMEOUT_SECONDS.
-func NewConnection(gateway string) (c *Connection) {
+func NewConnection(gateway string, config *tls.Config, timeoutSeconds uint8) (c *Connection) {
 	c = new(Connection)
 	c.gateway = gateway
-	c.timeoutSeconds = TIMEOUT_SECONDS
+	c.TlsConfig = config
+	c.timeoutSeconds = timeoutSeconds
 	return
 }
 
@@ -34,40 +33,17 @@ func (connection *Connection) SetTimeoutSeconds(seconds uint8) {
 	connection.timeoutSeconds = seconds
 }
 
-// Create and store a tls.Certificate using the provided parameters.
-// If you set rawBytes to true, the method assumes that you are
-// providing base64 certificate and key data. If set to false, it
-// will assume you are providing paths to files on drive.
-//
-// Returns an error if there is a problem creating the certificate.
-func (connection *Connection) CreateCertificate(certificate, key string, rawBytes bool) (err error) {
-	var cert tls.Certificate
-	if rawBytes {
-		cert, err = tls.X509KeyPair([]byte(certificate), []byte(key))
-	} else {
-		cert, err = tls.LoadX509KeyPair(certificate, key)
-	}
-	if err != nil {
-		return err
-	}
-	connection.tlsCertificate = cert
-	return nil
-}
-
 // Creates and sets connections to the gateway. Apple treats repeated
 // connections / disconnections as a potential DoS attack; you should
 // connect and reuse the connection for multiple push notifications.
 //
 // Returns an error if there is a problem connecting to the gateway.
 func (connection *Connection) Connect() (err error) {
-	conf := &tls.Config{
-		Certificates: []tls.Certificate{connection.tlsCertificate},
-	}
 	conn, err := net.Dial("tcp", connection.gateway)
 	if err != nil {
 		return err
 	}
-	tlsConn := tls.Client(conn, conf)
+	tlsConn := tls.Client(conn, connection.TlsConfig)
 	err = tlsConn.Handshake()
 	if err != nil {
 		return err
@@ -102,40 +78,7 @@ func (connection *Connection) Send(pn *PushNotification) (resp *PushNotification
 		return
 	}
 
-	// Create one channel that will serve to handle
-	// timeouts when the notification succeeds.
-	timeoutChannel := make(chan bool, 1)
-	go func() {
-		time.Sleep(time.Second * time.Duration(connection.timeoutSeconds))
-		timeoutChannel <- true
-	}()
-
-	// This channel will contain the binary response
-	// from Apple in the event of a failure.
-	responseChannel := make(chan []byte, 1)
-	go func() {
-		buffer := make([]byte, 6, 6)
-		connection.socket.Read(buffer)
-		responseChannel <- buffer
-	}()
-
-	// First one back wins!
-	// The data structure for an APN response is as follows:
-	//
-	// command    -> 1 byte
-	// status     -> 1 byte
-	// identifier -> 4 bytes
-	//
-	// The first byte will always be set to 8.
-	resp = NewPushNotificationResponse()
-	select {
-	case r := <-responseChannel:
-		resp.AppleResponse = APPLE_PUSH_RESPONSES[r[1]]
-	case <-timeoutChannel:
-		resp.Success = true
-	}
-
-	return
+	return resp
 }
 
 // Disconnects from the gateway.
