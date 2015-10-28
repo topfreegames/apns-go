@@ -11,7 +11,6 @@ import (
 	"time"
 )
 
-// Wait at most this many seconds for feedback data from Apple.
 const FeedbackTimeoutSeconds = 5
 
 // FeedbackChannel will receive individual responses from Apple.

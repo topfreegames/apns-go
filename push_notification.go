@@ -75,7 +75,7 @@ type PushNotification struct {
 	Identifier  int32
 	Expiry      uint32
 	DeviceToken string
-	payload     map[string]interface{}
+	Payload     map[string]interface{}
 	Priority    uint8
 }
 
@@ -83,13 +83,13 @@ type PushNotification struct {
 // It also initializes the pseudo-random identifier.
 func NewPushNotification() (pn *PushNotification) {
 	pn = new(PushNotification)
-	pn.payload = make(map[string]interface{})
+	pn.Payload = make(map[string]interface{})
 	pn.Identifier = rand.New(rand.NewSource(time.Now().UnixNano())).Int31n(IdentifierUbound)
 	pn.Priority = 10
 	return
 }
 
-// AddPayload sets the "aps" payload section of the request. It also
+// AddPayload sets the "aps" Payload section of the request. It also
 // has a hack described within to deal with specific zero values.
 func (pn *PushNotification) AddPayload(p *Payload) {
 	// This deserves some explanation.
@@ -111,22 +111,22 @@ func (pn *PushNotification) AddPayload(p *Payload) {
 	pn.Set("aps", p)
 }
 
-// Get returns the value of a payload key, if it exists.
+// Get returns the value of a Payload key, if it exists.
 func (pn *PushNotification) Get(key string) interface{} {
-	return pn.payload[key]
+	return pn.Payload[key]
 }
 
-// Set defines the value of a payload key.
+// Set defines the value of a Payload key.
 func (pn *PushNotification) Set(key string, value interface{}) {
-	pn.payload[key] = value
+	pn.Payload[key] = value
 }
 
-// PayloadJSON returns the current payload in JSON format.
+// PayloadJSON returns the current Payload in JSON format.
 func (pn *PushNotification) PayloadJSON() ([]byte, error) {
-	return json.Marshal(pn.payload)
+	return json.Marshal(pn.Payload)
 }
 
-// PayloadString returns the current payload in string format.
+// PayloadString returns the current Payload in string format.
 func (pn *PushNotification) PayloadString() (string, error) {
 	j, err := pn.PayloadJSON()
 	return string(j), err
@@ -142,12 +142,12 @@ func (pn *PushNotification) ToBytes() ([]byte, error) {
 	if len(token) != deviceTokenLength {
 		return nil, errors.New("device token has incorrect length")
 	}
-	payload, err := pn.PayloadJSON()
+	Payload, err := pn.PayloadJSON()
 	if err != nil {
 		return nil, err
 	}
-	if len(payload) > MaxPayloadSizeBytes {
-		return nil, errors.New("payload is larger than the " + strconv.Itoa(MaxPayloadSizeBytes) + " byte limit")
+	if len(Payload) > MaxPayloadSizeBytes {
+		return nil, errors.New("Payload is larger than the " + strconv.Itoa(MaxPayloadSizeBytes) + " byte limit")
 	}
 
 	frameBuffer := new(bytes.Buffer)
@@ -155,8 +155,8 @@ func (pn *PushNotification) ToBytes() ([]byte, error) {
 	binary.Write(frameBuffer, binary.BigEndian, uint16(deviceTokenLength))
 	binary.Write(frameBuffer, binary.BigEndian, token)
 	binary.Write(frameBuffer, binary.BigEndian, uint8(payloadItemid))
-	binary.Write(frameBuffer, binary.BigEndian, uint16(len(payload)))
-	binary.Write(frameBuffer, binary.BigEndian, payload)
+	binary.Write(frameBuffer, binary.BigEndian, uint16(len(Payload)))
+	binary.Write(frameBuffer, binary.BigEndian, Payload)
 	binary.Write(frameBuffer, binary.BigEndian, uint8(notificationIdentifierItemid))
 	binary.Write(frameBuffer, binary.BigEndian, uint16(notificationIdentifierLength))
 	binary.Write(frameBuffer, binary.BigEndian, pn.Identifier)

@@ -219,3 +219,9 @@ func (client *Client) ConnectAndWrite(resp *PushNotificationResponse, payload []
 
 	return err
 }
+
+func (client *Client) Close() {
+	if client.pool != nil {
+		client.pool.Close()
+	}
+}

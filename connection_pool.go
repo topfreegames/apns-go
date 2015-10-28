@@ -3,8 +3,11 @@ package apns
 import "crypto/tls"
 import "strings"
 import "time"
+import "sync"
 
 type ConnectionPool struct {
+	sync.Mutex
+	
 	NumConnections int
 	Gateway string
 
@@ -13,6 +16,8 @@ type ConnectionPool struct {
 	connections chan *Connection
 	pushQueue chan *PushNotification
 	responseQueue chan []byte
+
+	stopper chan bool
 }
 
 func NewConnectionPool(numConnections int, gateway string, certificate tls.Certificate) *ConnectionPool {
@@ -53,6 +58,8 @@ func (connection_pool *ConnectionPool) SendMessage(pushNotification *PushNotific
 }
 
 func (connection_pool *ConnectionPool) getConnection() *Connection {
+	connection_pool.Lock()
+	defer connection_pool.Unlock()
 	connection := <- connection_pool.connections
 	return connection
 }
@@ -89,7 +96,14 @@ func (connection_pool *ConnectionPool) sendPush(push *PushNotification, connecti
 	connection_pool.releaseConnection(connection)
 }
 
-
+func (connection_pool *ConnectionPool) Close() {
+	close(connection_pool.pushQueue)
+	time.Sleep(1 * time.Second)
+	for connection := range connection_pool.connections {
+		connection.Disconnect()
+	}
+	close(connection_pool.connections)
+}
 
 
 
