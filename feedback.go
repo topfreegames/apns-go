@@ -1,6 +1,7 @@
 package apns
 
 import (
+	"fmt"
 	"bytes"
 	"crypto/tls"
 	"encoding/binary"
@@ -12,12 +13,6 @@ import (
 )
 
 const FeedbackTimeoutSeconds = 5
-
-// FeedbackChannel will receive individual responses from Apple.
-var FeedbackChannel = make(chan (*FeedbackResponse))
-
-// If there's nothing to read, ShutdownChannel gets a true.
-var ShutdownChannel = make(chan bool)
 
 // FeedbackResponse represents a device token that Apple has
 // indicated should not be sent to in the future.
@@ -72,6 +67,11 @@ func (client *Client) ListenForFeedback() (err error) {
 		return err
 	}
 
+	err = tlsConn.SetReadDeadline(time.Time{})
+	if err != nil {
+		return err
+	}
+	
 	var tokenLength uint16
 	buffer := make([]byte, 38, 38)
 	deviceToken := make([]byte, 32, 32)
@@ -79,7 +79,8 @@ func (client *Client) ListenForFeedback() (err error) {
 	for {
 		_, err := tlsConn.Read(buffer)
 		if err != nil {
-			ShutdownChannel <- true
+			fmt.Printf("Error was %s\n", err)
+			client.ShutdownChannel <- true
 			break
 		}
 
@@ -94,7 +95,7 @@ func (client *Client) ListenForFeedback() (err error) {
 		}
 		resp.DeviceToken = hex.EncodeToString(deviceToken)
 
-		FeedbackChannel <- resp
+		client.FeedbackChannel <- resp
 	}
 
 	return nil

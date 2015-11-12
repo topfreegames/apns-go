@@ -37,6 +37,8 @@ type Client struct {
 	NumConnections    int
 	certificate       tls.Certificate
 	pool              *ConnectionPool
+	FeedbackChannel chan *FeedbackResponse
+	ShutdownChannel chan bool
 }
 
 // BareClient can be used to set the contents of your
