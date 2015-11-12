@@ -12,8 +12,6 @@ import (
 	"time"
 )
 
-const FeedbackTimeoutSeconds = 5
-
 // FeedbackResponse represents a device token that Apple has
 // indicated should not be sent to in the future.
 type FeedbackResponse struct {
@@ -33,7 +31,7 @@ func NewFeedbackResponse() (resp *FeedbackResponse) {
 // Feedback consists of device tokens that should
 // not be sent to in the future; Apple *does* monitor that
 // you respect this so you should be checking it ;)
-func (client *Client) ListenForFeedback() (err error) {
+func (client *Client) ListenForFeedback(feedbackTimeout time.Duration) (err error) {
 	var cert tls.Certificate
 
 	if len(client.CertificateBase64) == 0 && len(client.KeyBase64) == 0 {
@@ -59,15 +57,10 @@ func (client *Client) ListenForFeedback() (err error) {
 		return err
 	}
 	defer conn.Close()
-	conn.SetReadDeadline(time.Now().Add(FeedbackTimeoutSeconds * time.Second))
+	conn.SetReadDeadline(time.Now().Add(feedbackTimeout))
 
 	tlsConn := tls.Client(conn, conf)
 	err = tlsConn.Handshake()
-	if err != nil {
-		return err
-	}
-
-	err = tlsConn.SetReadDeadline(time.Time{})
 	if err != nil {
 		return err
 	}
