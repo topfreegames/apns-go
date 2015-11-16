@@ -70,7 +70,7 @@ func (client *Client) ListenForFeedback(feedbackTimeout time.Duration) (err erro
 	deviceToken := make([]byte, 32, 32)
 
 	for {
-		n, err := tlsConn.Read(buffer)
+		_, err := tlsConn.Read(buffer)
 		if err != nil {
 			client.ShutdownChannel <- true
 			break
