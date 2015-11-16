@@ -226,4 +226,5 @@ func (client *Client) Close() {
 	if client.pool != nil {
 		client.pool.Close()
 	}
+	log.Info("Successfully closed client.\n")
 }

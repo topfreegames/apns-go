@@ -17,10 +17,11 @@ type ConnectionPool struct {
 	pushQueue chan *PushNotification
 	responseQueue chan []byte
 
-	stopper chan bool
+	stopped sync.WaitGroup
 }
 
 func NewConnectionPool(numConnections int, gateway string, certificate tls.Certificate) *ConnectionPool {
+	log.Info("Creating new connection pool with %d connections and gateway %s\n", numConnections, gateway)
 	config := &tls.Config {
 		Certificates: []tls.Certificate{certificate},
 		ServerName: strings.Split(gateway, ":")[0],
@@ -30,11 +31,18 @@ func NewConnectionPool(numConnections int, gateway string, certificate tls.Certi
 	responseQueue := make(chan []byte, 1000)
 	
 	for i := numConnections; i >= 1; i-- {
+		log.Info("Creating new connection...")
 		newConnection := NewConnection(gateway, config, 2 * time.Second, responseQueue)					
-		newConnection.Connect()
+		log.Info("Trying to connect.")
+		err := newConnection.Connect()
+		if err != nil {
+			panic(err)
+		}
+		log.Info("Adding new acquired connection to the pool.")
 		connections <- newConnection
 	}
-	
+
+	log.Info("Pool of connections was successfully stablished.")
 	return &ConnectionPool {
 		NumConnections: numConnections,
 		Gateway: gateway,
@@ -46,6 +54,7 @@ func NewConnectionPool(numConnections int, gateway string, certificate tls.Certi
 }
 
 func (connection_pool *ConnectionPool) Start() {
+	log.Info("Starting pool of connections.")
 	go connection_pool.sendLoop()
 }
 
@@ -79,6 +88,8 @@ func (connection_pool *ConnectionPool) acquireNewConnection() {
 }
 
 func (connection_pool *ConnectionPool) sendLoop() {
+	connection_pool.stopped.Add(1)
+	defer connection_pool.stopped.Done()
 	for push := range connection_pool.pushQueue {
 		connection := connection_pool.getConnection()
 		go connection_pool.sendPush(push, connection)
@@ -98,11 +109,16 @@ func (connection_pool *ConnectionPool) sendPush(push *PushNotification, connecti
 
 func (connection_pool *ConnectionPool) Close() {
 	close(connection_pool.pushQueue)
-	time.Sleep(1 * time.Second)
-	for connection := range connection_pool.connections {
-		connection.Disconnect()
-	}
+	connection_pool.stopped.Wait()
+	time.Sleep(500 * time.Millisecond)
+	id := 0
 	close(connection_pool.connections)
+	for connection := range connection_pool.connections {
+		log.Info("Disconnecting connection %d.", id)
+		connection.Disconnect()
+		id += 1
+	}
+	log.Info("Successfully closed connection pool.")
 }
 
 

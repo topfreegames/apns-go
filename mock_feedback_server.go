@@ -4,7 +4,6 @@ import (
 	"bytes"
 	"crypto/tls"
 	"encoding/binary"
-	"log"
 	"net"
 	"time"
 )
@@ -19,7 +18,7 @@ func StartMockFeedbackServer(certFile, keyFile string) {
 		log.Panic(err)
 	}
 	config := tls.Config{Certificates: []tls.Certificate{cert}, ClientAuth: tls.RequireAnyClientCert}
-	log.Print("- starting Mock Apple Feedback TCP server at 0.0.0.0:5555")
+	log.Info("- starting Mock Apple Feedback TCP server at 0.0.0.0:5555")
 
 	srv, _ := tls.Listen("tcp", "0.0.0.0:5555", &config)
 	for {

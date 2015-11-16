@@ -73,6 +73,7 @@ func (connection *Connection) Send(pn *PushNotification) error {
 		return nil
 	}
 
+	connection.socket.Handshake()
 	_, err = connection.socket.Write(payload)
 	if err != nil {
 		return err
@@ -98,6 +99,9 @@ func (connection *Connection) Rec()  {
 
 // Disconnects from the gateway.
 func (connection *Connection) Disconnect() {
+	log.Info("Closing TCP connection.")
 	connection.tcpConnection.Close()
+	log.Info("Closing TLS/TCP Connection.")
 	connection.socket.Close()
+	log.Info("Successfully closed connection.")
 }

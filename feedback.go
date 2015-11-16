@@ -1,7 +1,6 @@
 package apns
 
 import (
-	"fmt"
 	"bytes"
 	"crypto/tls"
 	"encoding/binary"
@@ -57,7 +56,8 @@ func (client *Client) ListenForFeedback(feedbackTimeout time.Duration) (err erro
 		return err
 	}
 	defer conn.Close()
-	conn.SetReadDeadline(time.Now().Add(feedbackTimeout))
+	initTime := time.Time{}
+	conn.SetReadDeadline(initTime.Add(feedbackTimeout))
 
 	tlsConn := tls.Client(conn, conf)
 	err = tlsConn.Handshake()
@@ -70,9 +70,8 @@ func (client *Client) ListenForFeedback(feedbackTimeout time.Duration) (err erro
 	deviceToken := make([]byte, 32, 32)
 
 	for {
-		_, err := tlsConn.Read(buffer)
+		n, err := tlsConn.Read(buffer)
 		if err != nil {
-			fmt.Printf("Error was %s\n", err)
 			client.ShutdownChannel <- true
 			break
 		}
