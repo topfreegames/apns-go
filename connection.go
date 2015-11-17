@@ -3,7 +3,7 @@ package apns
 import "crypto/tls"
 import "net"
 import "time"
-
+import log "github.com/Sirupsen/logrus"
 // Abstracts a connection to a push notification gateway.
 type Connection struct {
 	gateway        string

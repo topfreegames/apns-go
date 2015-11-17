@@ -6,6 +6,7 @@ import (
 	"encoding/binary"
 	"net"
 	"time"
+	log "github.com/Sirupsen/logrus"
 )
 
 // StartMockFeedbackServer spins up a simple stand-in for the Apple

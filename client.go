@@ -7,6 +7,7 @@ import (
 	"strings"
 	"time"
 	"sync"
+	log "github.com/Sirupsen/logrus"
 )
 
 var _ APNSClient = &Client{}

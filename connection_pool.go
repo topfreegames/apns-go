@@ -4,6 +4,7 @@ import "crypto/tls"
 import "strings"
 import "time"
 import "sync"
+import log "github.com/Sirupsen/logrus"
 
 type ConnectionPool struct {
 	sync.Mutex
@@ -11,7 +12,7 @@ type ConnectionPool struct {
 	NumConnections int
 	Gateway string
 
-	TlsConfig *tls.Config
+	TlsConfig *tls.Config	
 	
 	connections chan *Connection
 	pushQueue chan *PushNotification
@@ -92,7 +93,7 @@ func (connection_pool *ConnectionPool) sendLoop() {
 	defer connection_pool.stopped.Done()
 	for push := range connection_pool.pushQueue {
 		connection := connection_pool.getConnection()
-		go connection_pool.sendPush(push, connection)
+		connection_pool.sendPush(push, connection)
 	}
 }
 
