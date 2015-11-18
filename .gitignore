@@ -22,3 +22,7 @@ _testmain.go
 *.exe
 
 *.pem
+
+rsa*
+*.key
+*.cert
