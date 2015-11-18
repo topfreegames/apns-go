@@ -17,6 +17,7 @@ var maxBackoff = 20 * time.Second
 
 //Connection represents a single connection to APNS.
 type Connection struct {
+	Client
 	conn            *tls.Conn
 	queue           chan PushNotification
 	errors          chan BadPushNotification
@@ -29,8 +30,9 @@ type Connection struct {
 }
 
 //NewConnection initializes an APNS connection. Use Connection.Start() to actually start sending notifications.
-func NewConnection() *Connection {
+func NewConnection(client *Client) *Connection {
 	c := new(Connection)
+	c.Client = *client
 	c.queue = make(chan PushNotification)
 	c.errors = make(chan BadPushNotification)
 	c.responses = make(chan Response, ResponseQueueSize)
