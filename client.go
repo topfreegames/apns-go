@@ -10,6 +10,7 @@ import (
 	log "github.com/Sirupsen/logrus"
 )
 
+
 var _ APNSClient = &Client{}
 
 // APNSClient is an APNS client.
