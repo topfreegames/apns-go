@@ -78,7 +78,7 @@ type PushNotification struct {
 // It also initializes the pseudo-random identifier.
 func NewPushNotification() (pn *PushNotification) {
 	pn = new(PushNotification)
-	pn.payload = make(map[string]interface{})
+	pn.Payload = make(map[string]interface{})
 	pn.Identifier = rand.New(rand.NewSource(time.Now().UnixNano())).Uint32()
 	pn.Priority = 10
 	return
