@@ -72,7 +72,7 @@ func NewAlertDictionary() *AlertDictionary {
 // PushNotification is the wrapper for the Payload.
 // The length fields are computed in ToBytes() and aren't represented here.
 type PushNotification struct {
-	Identifier  int32
+	Identifier  uint32
 	Expiry      uint32
 	DeviceToken string
 	Payload     map[string]interface{}
@@ -84,7 +84,7 @@ type PushNotification struct {
 func NewPushNotification() (pn *PushNotification) {
 	pn = new(PushNotification)
 	pn.Payload = make(map[string]interface{})
-	pn.Identifier = rand.New(rand.NewSource(time.Now().UnixNano())).Int31n(IdentifierUbound)
+	pn.Identifier = rand.New(rand.NewSource(time.Now().UnixNano())).Uint32()
 	pn.Priority = 10
 	return
 }

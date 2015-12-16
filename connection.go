@@ -98,9 +98,10 @@ func (conn *Connection) Start() error {
 		return err
 	}
 	//Start sender goroutine
-	go conn.sender(conn.queue)
+	sent := make(chan PushNotification, 10000)
+	go conn.sender(conn.queue, sent)
 	//Start limbo goroutine
-	go conn.limbo(conn.responses, conn.errors, conn.queue)
+	go conn.limbo(sent, conn.responses, conn.errors, conn.queue)
 	return nil
 }
 
@@ -112,7 +113,8 @@ func (conn *Connection) Stop() chan bool {
 	//Thought: Don't necessarily need a channel here. Could signal finishing by closing errors?
 }
 
-func (conn *Connection) sender(queue <-chan PushNotification) {
+func (conn *Connection) sender(queue <-chan PushNotification, sent chan PushNotification) {
+	i := 0
 	stopping := false
 	defer conn.conn.Close()
 	log.Println("Starting sender")
@@ -143,20 +145,18 @@ func (conn *Connection) sender(queue <-chan PushNotification) {
 				if conn.conn == nil {
 					conn.spinUntilReconnect()
 				}
-				ps, _ := pn.PayloadString()
-				log.Printf("Sending token: %s identi: %d payload: %s -> %s\n", pn.DeviceToken, pn.Identifier, ps, string(payload))
 				_, err := conn.conn.Write(payload)
 				if err != nil {
-					
-					log.Printf("ERRORS IS: %s\n", err)
 					go func() {
 						conn.shouldReconnect <- true
 					}()
 					//Disconnect?
-				} 
-				if stopping && len(queue) == 0 {
-					log.Println("sender: I'm stopping and I've run out of things to send. Let's see if limbo is empty.")
-					conn.senderFinished <- true
+				} else {
+					i++
+					sent <- pn
+					if stopping && len(queue) == 0 {
+						conn.senderFinished <- true
+					}
 				}
 			}
 		case <-conn.stopping:
@@ -170,6 +170,7 @@ func (conn *Connection) sender(queue <-chan PushNotification) {
 			log.Println("sender: limbo is empty!")
 			if len(queue) == 0 {
 				log.Println("sender: limbo is empty and so am I!")
+				close(sent)
 				return
 			}
 		}
@@ -178,7 +179,7 @@ func (conn *Connection) sender(queue <-chan PushNotification) {
 
 func (conn *Connection) reader(responses chan<- Response) {
 	buffer := make([]byte, 6)
-	for {		
+	for {
 		n, err := conn.conn.Read(buffer)
 		if err != nil && n < 6 {
 			log.Println("APNS: Error before reading complete response", n, err)
@@ -199,30 +200,83 @@ func (conn *Connection) reader(responses chan<- Response) {
 	}
 }
 
-func (conn *Connection) limbo(responses chan Response, errors chan BadPushNotification, queue chan PushNotification) {
+func (conn *Connection) limbo(sent <-chan PushNotification, responses chan Response, errors chan BadPushNotification, queue chan PushNotification) {
 	stopping := false
+	limbo := make([]timedPushNotification, 0, SentBufferSize)
+	ticker := time.NewTicker(1 * time.Second)
 	for {
 		select {
+		case pn, ok := <-sent:
+			limbo = append(limbo, pn.timed())
+			stopping = false
+			if !ok {
+				log.Println("limbo: sent is closed, so sender is done. So am I, then!")
+				close(errors)
+				conn.stopped <- true
+				return
+			}
 		case <-conn.senderFinished:
 			//senderFinished means the sender thinks it's done.
 			//However, sender might not be - limbo could resend some, if there are any left here.
 			//So we just take note of this until limbo is empty too.
 			stopping = true
 		case resp, ok := <-responses:
-			if !ok && stopping {
-				conn.ackFinished <- true
+			if !ok {
 				//If the responses channel is closed,
 				//that means we're shutting down the connection.
 			}
-			log.Printf("GOT A BAD RESPONSE IDENT: %d STATUS: %d\n", resp.Identifier, resp.Status)
-			if resp.Status != 10 {
-				//It was an error, we should report this on the error channel
-				bad := BadPushNotification{Status: resp.Status}
-				go func(bad BadPushNotification) {
-					errors <- bad
-				}(bad)
-			}			
+			log.Println("Saw an error response; flushing up to", resp.Identifier)
+			for i, pn := range limbo {
+				if pn.Identifier == resp.Identifier {
+					log.Println("Got the bad one!!! At index:", i, "identifier:", pn.Identifier)
+					if resp.Status != 10 {
+						//It was an error, we should report this on the error channel
+						bad := BadPushNotification{PushNotification: pn.PushNotification, Status: resp.Status}
+						go func(bad BadPushNotification) {
+							errors <- bad
+						}(bad)
+					}
+					if len(limbo) > i {
+						log.Printf("Requeueing %d notifications\n", len(limbo)-(i+1))
+						toRequeue := len(limbo) - (i + 1)
+						if toRequeue > 0 {
+							conn.requeue(limbo[i+1:])
+							//We resent some notifications: that means we should wait for sender to tell us it's done, again.
+							stopping = false
+						}
+					}
+				}
+			}
+			limbo = make([]timedPushNotification, 0, SentBufferSize)
+		case <-ticker.C:
+			flushed := false
+			for i := range limbo {
+				if limbo[i].After(time.Now().Add(-TimeoutSeconds * time.Second)) {
+					if i > 0 {
+						log.Printf("The first %d notifications timed out ok.\n", i)
+						newLimbo := make([]timedPushNotification, len(limbo[i:]), SentBufferSize)
+						copy(newLimbo, limbo[i:])
+						limbo = newLimbo
+						flushed = true
+						break
+					}
+				}
+			}
+			if !flushed {
+				limbo = make([]timedPushNotification, 0, SentBufferSize)
+			}
+			if stopping && len(limbo) == 0 {
+				//sender() is finished and so is limbo - so the connection is done.
+				log.Println("limbo: I've flushed all my notifications. Tell sender I'm done.")
+				conn.ackFinished <- true
+			}
 		}
+	}
+}
+
+func (conn *Connection) requeue(queue []timedPushNotification) {
+	for _, pn := range queue {
+		conn.Enqueue(&pn.PushNotification)
 	}
 }
 
