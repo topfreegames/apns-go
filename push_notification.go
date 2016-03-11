@@ -84,7 +84,7 @@ type PushNotification struct {
 func NewPushNotification() (pn *PushNotification) {
 	pn = new(PushNotification)
 	pn.Payload = make(map[string]interface{})
-	pn.Identifier = rand.New(rand.NewSource(time.Now().UnixNano())).Uint32()
+	pn.Identifier = uint32(rand.New(rand.NewSource(time.Now().UnixNano())).Int31n(9999))
 	pn.Priority = 10
 	return
 }
@@ -150,7 +150,7 @@ func (pn *PushNotification) ToBytes() ([]byte, error) {
 	frameBuffer := new(bytes.Buffer)
 
 	binary.Write(frameBuffer, binary.BigEndian, uint8(deviceTokenItemid))
-	binary.Write(frameBuffer, binary.BigEndian, uint16(deviceTokenItemLength))
+	binary.Write(frameBuffer, binary.BigEndian, uint16(len(token)))
 	binary.Write(frameBuffer, binary.BigEndian, token)
 	binary.Write(frameBuffer, binary.BigEndian, uint8(payloadItemid))
 	binary.Write(frameBuffer, binary.BigEndian, uint16(len(Payload)))
