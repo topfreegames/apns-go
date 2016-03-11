@@ -29,7 +29,7 @@ const (
 	notificationIdentifierItemid = 3
 	expirationDateItemid         = 4
 	priorityItemid               = 5
-	deviceTokenItemLength            = 32
+	deviceTokenItemLength            = 64
 	notificationIdentifierLength = 4
 	expirationDateLength         = 4
 	priorityLength               = 1
