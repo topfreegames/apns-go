@@ -152,7 +152,7 @@ func (conn *Connection) sender(queue <-chan PushNotification, sent chan PushNoti
 					log.Fatal(err)
 				}
 				log.Printf("NOT: %s\n", notStr)
-				log.Printf("bytes: %+v\n", payload)
+				log.Printf("bytes: %+v\n", string(payload))
 				_, err = conn.conn.Write(payload)
 				if err != nil {
 					log.Printf("ERROR WAS: %+v\n", err)
