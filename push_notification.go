@@ -76,7 +76,7 @@ func NewAlertDictionary() *AlertDictionary {
 type PushNotification struct {
 	Identifier  int32 `json:"identifier"`
 	Expiry      uint32 `json:"expiry"`
-	DeviceToken string `json:"device_token"`
+	DeviceToken string `json:"devicetoken"`
 	Payload     map[string]interface{} `json:"payload"`
 	Priority    uint8 `json:"priority"`
 }
