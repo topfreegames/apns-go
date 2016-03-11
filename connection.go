@@ -151,7 +151,6 @@ func (conn *Connection) sender(queue <-chan PushNotification, sent chan PushNoti
 				if err != nil {
 					log.Printf("Err is: %+v\n", err)
 				}
-				log.Printf("Not is: %s\n", pStr)
 				_, err = conn.conn.Write(payload)
 				if err != nil {
 					go func() {
