@@ -147,6 +147,12 @@ func (conn *Connection) sender(queue <-chan PushNotification, sent chan PushNoti
 				if conn.conn == nil {
 					conn.spinUntilReconnect()
 				}
+				notStr, err := pn.PayloadString()
+				if err != nil {
+					log.Fatal(err)
+				}
+				log.Printf("NOT: %s\n", notStr)
+				log.Printf("bytes: %+v\n", payload)
 				_, err = conn.conn.Write(payload)
 				if err != nil {
 					log.Printf("ERROR WAS: %+v\n", err)
