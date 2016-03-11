@@ -55,7 +55,7 @@ func NewConnection(client *Client, id int, errorQueue chan BadPushNotification) 
 //Response is a reply from APNS - see apns.ApplePushResponses.
 type Response struct {
 	Status     uint8
-	Identifier int32
+	Identifier uint32
 }
 
 func newResponse() Response {
@@ -201,7 +201,7 @@ func (conn *Connection) reader(responses chan<- Response) {
 			log.Printf("CONN #%d - Something went wrong: command should have been 8; it was actually %+v\n",conn.id, command)
 		}
 		resp := newResponse()
-		resp.Identifier = int32(binary.BigEndian.Uint32(buffer[2:6]))
+		resp.Identifier = binary.BigEndian.Uint32(buffer[2:6])
 		resp.Status = uint8(buffer[1])
 		responses <- resp
 		conn.shouldReconnect <- true
