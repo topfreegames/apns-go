@@ -157,7 +157,8 @@ func (pn *PushNotification) ToBytes() ([]byte, error) {
 	binary.Write(frameBuffer, binary.BigEndian, Payload)
 	binary.Write(frameBuffer, binary.BigEndian, uint8(notificationIdentifierItemid))
 	binary.Write(frameBuffer, binary.BigEndian, uint16(notificationIdentifierLength))
-	binary.Write(frameBuffer, binary.BigEndian, pn.Identifier)
+	binary.Write(frameBuffer, binary.BigEndian, uint32(pn.Identifier))
+	
 	binary.Write(frameBuffer, binary.BigEndian, uint8(expirationDateItemid))
 	binary.Write(frameBuffer, binary.BigEndian, uint16(expirationDateLength))
 
@@ -166,7 +167,7 @@ func (pn *PushNotification) ToBytes() ([]byte, error) {
 	
 	binary.Write(frameBuffer, binary.BigEndian, uint8(priorityItemid))
 	binary.Write(frameBuffer, binary.BigEndian, uint16(priorityLength))
-	binary.Write(frameBuffer, binary.BigEndian, pn.Priority)
+	binary.Write(frameBuffer, binary.BigEndian, uint8(pn.Priority))
 
 	buffer := bytes.NewBuffer([]byte{})
 	binary.Write(buffer, binary.BigEndian, pushCommandValue)
