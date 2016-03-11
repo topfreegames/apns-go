@@ -29,7 +29,7 @@ const (
 	notificationIdentifierItemid = 3
 	expirationDateItemid         = 4
 	priorityItemid               = 5
-	deviceTokenItemLength            = 64
+	deviceTokenItemLength            = 32
 	notificationIdentifierLength = 4
 	expirationDateLength         = 4
 	priorityLength               = 1
@@ -150,7 +150,7 @@ func (pn *PushNotification) ToBytes() ([]byte, error) {
 	frameBuffer := new(bytes.Buffer)
 
 	binary.Write(frameBuffer, binary.BigEndian, uint8(deviceTokenItemid))
-	binary.Write(frameBuffer, binary.BigEndian, uint16(len(token)))
+	binary.Write(frameBuffer, binary.BigEndian, uint16(deviceTokenItemLength))
 	binary.Write(frameBuffer, binary.BigEndian, token)
 	binary.Write(frameBuffer, binary.BigEndian, uint8(payloadItemid))
 	binary.Write(frameBuffer, binary.BigEndian, uint16(len(Payload)))
