@@ -136,12 +136,12 @@ func (pn *PushNotification) PayloadString() (string, error) {
 // ToBytes returns a byte array of the complete PushNotification
 // struct. This array is what should be transmitted to the APN Service.
 func (pn *PushNotification) ToBytes() ([]byte, error) {
-	token, err := hex.DecodeString(pn.DeviceToken)
+	tokenHex, err := hex.DecodeString(pn.DeviceToken)
 	if err != nil {
 		return nil, err
 	}
-	if len(token) != deviceTokenLength {
-		return nil, errors.New(fmt.Sprintf("device token has incorrect length %d was supposed to be %d", len(token), deviceTokenLength))
+	if len(tokenHex) != deviceTokenLength {
+		return nil, errors.New(fmt.Sprintf("device token has incorrect length %d was supposed to be %d. TOKEN IS %+v BUT ORIGINAL IS %+v", len(tokenHex), deviceTokenLength, tokenHex, pn.DeviceToken))
 	}
 	payload, err := pn.PayloadJSON()
 	if err != nil {
@@ -154,7 +154,7 @@ func (pn *PushNotification) ToBytes() ([]byte, error) {
 	frameBuffer := new(bytes.Buffer)
 	binary.Write(frameBuffer, binary.BigEndian, uint8(deviceTokenItemid))
 	binary.Write(frameBuffer, binary.BigEndian, uint16(deviceTokenLength))
-	binary.Write(frameBuffer, binary.BigEndian, token)
+	binary.Write(frameBuffer, binary.BigEndian, tokenHex)
 	binary.Write(frameBuffer, binary.BigEndian, uint8(payloadItemid))
 	binary.Write(frameBuffer, binary.BigEndian, uint16(len(payload)))
 	binary.Write(frameBuffer, binary.BigEndian, payload)
