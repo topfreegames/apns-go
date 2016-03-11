@@ -29,7 +29,7 @@ const (
 	notificationIdentifierItemid = 3
 	expirationDateItemid         = 4
 	priorityItemid               = 5
-	deviceTokenLength            = 32
+	deviceTokenItemLength            = 32
 	notificationIdentifierLength = 4
 	expirationDateLength         = 4
 	priorityLength               = 1
@@ -139,9 +139,6 @@ func (pn *PushNotification) ToBytes() ([]byte, error) {
 	if err != nil {
 		return nil, err
 	}
-//	if len(token) != deviceTokenLength {
-//		return nil, errors.New("device token has incorrect length")
-//	}
 	Payload, err := pn.PayloadJSON()
 	if err != nil {
 		return nil, err
@@ -152,25 +149,29 @@ func (pn *PushNotification) ToBytes() ([]byte, error) {
 
 	frameBuffer := new(bytes.Buffer)
 
-//	binary.Write(frameBuffer, binary.BigEndian, uint8(deviceTokenItemid))
-//	binary.Write(frameBuffer, binary.BigEndian, uint16(deviceTokenLength))
+	binary.Write(frameBuffer, binary.BigEndian, uint8(deviceTokenItemid))
+	binary.Write(frameBuffer, binary.BigEndian, uint16(deviceTokenItemLength))
 	binary.Write(frameBuffer, binary.BigEndian, token)
-//	binary.Write(frameBuffer, binary.BigEndian, uint8(payloadItemid))
-//	binary.Write(frameBuffer, binary.BigEndian, uint16(len(Payload)))
+	binary.Write(frameBuffer, binary.BigEndian, uint8(payloadItemid))
+	binary.Write(frameBuffer, binary.BigEndian, uint16(len(Payload)))
 	binary.Write(frameBuffer, binary.BigEndian, Payload)
-//	binary.Write(frameBuffer, binary.BigEndian, uint8(notificationIdentifierItemid))
-//	binary.Write(frameBuffer, binary.BigEndian, uint16(notificationIdentifierLength))
+	binary.Write(frameBuffer, binary.BigEndian, uint8(notificationIdentifierItemid))
+	binary.Write(frameBuffer, binary.BigEndian, uint16(notificationIdentifierLength))
 	binary.Write(frameBuffer, binary.BigEndian, pn.Identifier)
-//	binary.Write(frameBuffer, binary.BigEndian, uint8(expirationDateItemid))
-//	binary.Write(frameBuffer, binary.BigEndian, uint16(expirationDateLength))
-	binary.Write(frameBuffer, binary.BigEndian, pn.Expiry)
-//	binary.Write(frameBuffer, binary.BigEndian, uint8(priorityItemid))
-//	binary.Write(frameBuffer, binary.BigEndian, uint16(priorityLength))
+	binary.Write(frameBuffer, binary.BigEndian, uint8(expirationDateItemid))
+	binary.Write(frameBuffer, binary.BigEndian, uint16(expirationDateLength))
+
+	binary.Write(frameBuffer, binary.BigEndian, pn.Expiry)		
+
+	
+	binary.Write(frameBuffer, binary.BigEndian, uint8(priorityItemid))
+	binary.Write(frameBuffer, binary.BigEndian, uint16(priorityLength))
 	binary.Write(frameBuffer, binary.BigEndian, pn.Priority)
 
 	buffer := bytes.NewBuffer([]byte{})
-	binary.Write(buffer, binary.BigEndian, uint8(pushCommandValue))
-	binary.Write(buffer, binary.BigEndian, uint32(frameBuffer.Len()))
+	binary.Write(buffer, binary.BigEndian, pushCommandValue)
+	binary.Write(buffer, binary.BigEndian, frameBuffer.Len())
 	binary.Write(buffer, binary.BigEndian, frameBuffer.Bytes())
+
 	return buffer.Bytes(), nil
 }
