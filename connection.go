@@ -149,6 +149,7 @@ func (conn *Connection) sender(queue <-chan PushNotification, sent chan PushNoti
 				}
 				_, err = conn.conn.Write(payload)
 				if err != nil {
+					log.Printf("ERROR WAS: %+v\n", err)
 					go func() {
 						conn.shouldReconnect <- true
 					}()
