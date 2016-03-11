@@ -139,7 +139,6 @@ func (conn *Connection) sender(queue <-chan PushNotification, sent chan PushNoti
 			}
 			//Then send the push notification
 			pn.Priority = 10
-			log.Printf("PN HAS TOKEN: %s\n", pn.DeviceToken)
 			payload, err := pn.ToBytes()
 			if err != nil {
 				log.Printf("CONN #%d - %+v\n",conn.id,err)
@@ -148,12 +147,6 @@ func (conn *Connection) sender(queue <-chan PushNotification, sent chan PushNoti
 				if conn.conn == nil {
 					conn.spinUntilReconnect()
 				}
-				notStr, err := pn.PayloadString()
-				if err != nil {
-					log.Fatal(err)
-				}
-				log.Printf("NOT: %s\n", notStr)
-				log.Printf("bytes: %+v\n", string(payload))
 				_, err = conn.conn.Write(payload)
 				if err != nil {
 					log.Printf("ERROR WAS: %+v\n", err)
