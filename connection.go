@@ -139,6 +139,7 @@ func (conn *Connection) sender(queue <-chan PushNotification, sent chan PushNoti
 			}
 			//Then send the push notification
 			pn.Priority = 10
+			log.Printf("PN HAS TOKEN: %s\n", pn.DeviceToken)
 			payload, err := pn.ToBytes()
 			if err != nil {
 				log.Printf("CONN #%d - %+v\n",conn.id,err)

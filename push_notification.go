@@ -3,6 +3,7 @@ package apns
 import (
 	"bytes"
 	"encoding/binary"
+	"log"
 	"fmt"
 	"encoding/hex"
 	"encoding/json"
@@ -136,7 +137,9 @@ func (pn *PushNotification) PayloadString() (string, error) {
 // ToBytes returns a byte array of the complete PushNotification
 // struct. This array is what should be transmitted to the APN Service.
 func (pn *PushNotification) ToBytes() ([]byte, error) {
+	log.Printf("DV TK IS: %s\n", pn.DeviceToken)
 	tokenHex, err := hex.DecodeString(pn.DeviceToken)
+	log.Printf("token hex: %s\n", string(tokenHex))
 	if err != nil {
 		return nil, err
 	}
