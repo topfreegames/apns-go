@@ -1,14 +1,14 @@
 package apns
 
 import "sync"
-import "log"
+import "github.com/uber-go/zap"
 
 type ConnectionPool struct {
 	sync.Mutex
 	client *Client
 
 	NumConnections int
-	
+
 	connections chan *Connection
 	pushQueue chan *PushNotification
 	responseQueue chan BadPushNotification
@@ -16,13 +16,13 @@ type ConnectionPool struct {
 	stopped sync.WaitGroup
 }
 
-func NewConnectionPool(client *Client, numConnections int) (*ConnectionPool, error) {
+func NewConnectionPool(client *Client, numConnections int, logger zap.Logger) (*ConnectionPool, error) {
 	connections := make(chan *Connection, numConnections)
 	responseQueue := make(chan BadPushNotification, 10000)
 
 	for i := numConnections; i >= 1; i-- {
 		newConnection := NewConnection(client, i, responseQueue)
-		err := newConnection.Start()
+		err := newConnection.Start(logger)
 		if err != nil {
 			return nil, err
 		}
@@ -35,12 +35,12 @@ func NewConnectionPool(client *Client, numConnections int) (*ConnectionPool, err
 		pushQueue: make(chan *PushNotification, numConnections * 3),
 		responseQueue: responseQueue,
 	}
-	connPool.Start()
+	connPool.Start(logger)
 	return connPool, nil
 }
 
-func (conn_pool *ConnectionPool) Start() {
-	log.Println("Starting pool of connections...")	
+func (conn_pool *ConnectionPool) Start(logger zap.Logger) {
+  logger.Info("APNS: Starting pool of connections")
 	go conn_pool.sendLoop()
 }
 
@@ -64,10 +64,10 @@ func (conn_pool *ConnectionPool) sendLoop() {
 		conn.Enqueue(pn)
 		// release connection
 		conn_pool.connections <- conn
-	}	
+	}
 }
 
-func (conn_pool *ConnectionPool) Stop() {
+func (conn_pool *ConnectionPool) Stop(logger zap.Logger) {
 	close(conn_pool.pushQueue)
 	conn_pool.stopped.Wait()
 	close(conn_pool.connections)
@@ -76,8 +76,8 @@ func (conn_pool *ConnectionPool) Stop() {
 		if !ok {
 			break
 		}
-		<- conn.Stop()
-	}	
+		<- conn.Stop(logger)
+	}
 }
 
 

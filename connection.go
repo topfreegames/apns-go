@@ -3,10 +3,10 @@ package apns
 import (
 	"crypto/tls"
 	"encoding/binary"
-	"log"
 	"strings"
 	"net"
 	"time"
+  "github.com/uber-go/zap"
 )
 
 //ResponseQueueSize indicates how many APNS responses may be buffered.
@@ -79,7 +79,7 @@ func (pn PushNotification) timed() timedPushNotification {
 }
 
 //Enqueue adds a push notification to the end of the "sending" queue.
-func (conn *Connection) Enqueue(pn *PushNotification) {	
+func (conn *Connection) Enqueue(pn *PushNotification) {
 	conn.queue <- *pn
 }
 
@@ -89,40 +89,49 @@ func (conn *Connection) Errors() (errors <-chan BadPushNotification) {
 }
 
 //Start initiates a connection to APNS and asnchronously sends notifications which have been queued.
-func (conn *Connection) Start() error {
+func (conn *Connection) Start(logger zap.Logger) error {
 	//Connect to APNS. The reason this is here as well as in sender is that this probably catches any unavoidable errors in a synchronous fashion, while in sender it can reconnect after temporary errors (which should work most of the time.)
-	err := conn.connect()
+	err := conn.connect(logger)
 	if err != nil {
-		log.Fatalf("CONN #%d - Failed to connect due to: %+v\n", conn.id, err)
+    logger.Fatal("APNS: Failed to connect",
+      zap.Int("connectionId", conn.id),
+      zap.Error(err),
+    )
 		return err
 	}
 	//Start sender goroutine
 	sent := make(chan PushNotification, 10000)
-	go conn.sender(conn.queue, sent)
+	go conn.sender(conn.queue, sent, logger)
 	//Start limbo goroutine
-	go conn.limbo(sent, conn.responses, conn.errors, conn.queue)
+	go conn.limbo(sent, conn.responses, conn.errors, conn.queue, logger)
 	return nil
 }
 
 //Stop gracefully closes the connection - it waits for the sending queue to clear, and then shuts down.
-func (conn *Connection) Stop() chan bool {
-	log.Printf("CONN #%d - apns: shutting down.\n", conn.id)
+func (conn *Connection) Stop(logger zap.Logger) chan bool {
+  logger.Info("APNS: Shutting down one of the connections",
+    zap.Int("connectionId", conn.id),
+  )
 	conn.stopping <- true
 	return conn.stopped
 	//Thought: Don't necessarily need a channel here. Could signal finishing by closing errors?
 }
 
-func (conn *Connection) sender(queue <-chan PushNotification, sent chan PushNotification) {
+func (conn *Connection) sender(queue <-chan PushNotification, sent chan PushNotification, logger zap.Logger) {
 	i := 0
 	stopping := false
 	defer conn.conn.Close()
 	defer conn.connAux.Close()
-	log.Printf("CONN #%d - Starting sender", conn.id)
+  logger.Info("APNS: Starting sender for connection",
+    zap.Int("connectionId", conn.id),
+  )
 	for {
 		select {
 		case pn, ok := <-conn.queue:
 			if !ok {
-				log.Printf("CONN %d - Not okay; queue closed.", conn.id)
+        logger.Info("APNS: Connection not okay; queue closed",
+          zap.Int("connectionId", conn.id),
+        )
 				//That means the Connection is stopped
 				//close sent?
 				return
@@ -134,22 +143,27 @@ func (conn *Connection) sender(queue <-chan PushNotification, sent chan PushNoti
 				conn.conn = nil
 				conn.connAux.Close()
 				conn.connAux = nil
-				conn.spinUntilReconnect()
+				conn.spinUntilReconnect(logger)
 			default:
 			}
 			//Then send the push notification
 			pn.Priority = 10
 			payload, err := pn.ToBytes()
 			if err != nil {
-				log.Printf("CONN #%d - %+v\n",conn.id,err)
+        logger.Info("APNS: Connection Error",
+          zap.Int("connectionId", conn.id),
+          zap.Error(err),
+        )
 				//Should report this on the bad notifications channel probably
 			} else {
 				if conn.conn == nil {
-					conn.spinUntilReconnect()
+					conn.spinUntilReconnect(logger)
 				}
 				_, err = conn.conn.Write(payload)
 				if err != nil {
-					log.Printf("ERROR WAS: %+v\n", err)
+          logger.Info("APNS: Error writing payload",
+            zap.Error(err),
+          )
 					go func() {
 						conn.shouldReconnect <- true
 					}()
@@ -163,16 +177,24 @@ func (conn *Connection) sender(queue <-chan PushNotification, sent chan PushNoti
 				}
 			}
 		case <-conn.stopping:
-			log.Printf("CONN #%d - sender: Got a stop message!\n", conn.id)
+      logger.Info("APNS: Connection sender - Got a stop message",
+        zap.Int("connectionId", conn.id),
+      )
 			stopping = true
 			if len(queue) == 0 {
-				log.Printf("CONN #%d - sender: I'm stopping and I've run out of things to send. Let's see if limbo is empty.", conn.id)
+        logger.Info("APNS: Connection sender - Stopping because ran out of things to send. Let's see if limbo is empty",
+          zap.Int("connectionId", conn.id),
+        )
 				conn.senderFinished <- true
 			}
 		case <-conn.ackFinished:
-			log.Printf("CONN #%d - sender: limbo is empty!", conn.id)
+      logger.Info("APNS: Connection sender - limbo is empty",
+        zap.Int("connectionId", conn.id),
+      )
 			if len(queue) == 0 {
-				log.Printf("CONN #%d - sender: limbo is empty and so am I!", conn.id)
+        logger.Info("APNS: Connection sender - limbo is empty and so am I",
+          zap.Int("connectionId", conn.id),
+        )
 				close(sent)
 				return
 			}
@@ -180,18 +202,25 @@ func (conn *Connection) sender(queue <-chan PushNotification, sent chan PushNoti
 	}
 }
 
-func (conn *Connection) reader(responses chan<- Response) {
+func (conn *Connection) reader(responses chan<- Response, logger zap.Logger) {
 	buffer := make([]byte, 6)
 	for {
 		n, err := conn.conn.Read(buffer)
 		if err != nil && n < 6 {
-			log.Printf("CONN #%d - APNS: Error before reading complete response %d %+v\n", conn.id, n, err)
+      logger.Info("APNS: Connection error before reading complete response",
+        zap.Int("connectionId", conn.id),
+        zap.Int("n", n),
+        zap.Error(err),
+      )
 			conn.shouldReconnect <- true
 			return
 		}
 		command := uint8(buffer[0])
 		if command != 8 {
-			log.Printf("CONN #%d - Something went wrong: command should have been 8; it was actually %+v\n",conn.id, command)
+      logger.Info("APNS: Something went wrong in a connection - Command should have been 8 but it had other value instead",
+        zap.Int("connectionId", conn.id),
+        zap.Object("commandValue", command),
+      )
 		}
 		resp := newResponse()
 		resp.Identifier = binary.BigEndian.Uint32(buffer[2:6])
@@ -202,7 +231,7 @@ func (conn *Connection) reader(responses chan<- Response) {
 	}
 }
 
-func (conn *Connection) limbo(sent <-chan PushNotification, responses chan Response, errors chan BadPushNotification, queue chan PushNotification) {
+func (conn *Connection) limbo(sent <-chan PushNotification, responses chan Response, errors chan BadPushNotification, queue chan PushNotification, logger zap.Logger) {
 	stopping := false
 	limbo := make([]timedPushNotification, 0, SentBufferSize)
 	ticker := time.NewTicker(1 * time.Second)
@@ -212,7 +241,9 @@ func (conn *Connection) limbo(sent <-chan PushNotification, responses chan Respo
 			limbo = append(limbo, pn.timed())
 			stopping = false
 			if !ok {
-				log.Printf("CONN #%d - limbo: sent is closed, so sender is done. So am I, then!", conn.id)
+        logger.Info("APNS: Connection limbo - sent is closed, so sender is done. So am I, then",
+          zap.Int("connectionId", conn.id),
+        )
 				close(errors)
 				conn.stopped <- true
 				return
@@ -263,20 +294,22 @@ func (conn *Connection) limbo(sent <-chan PushNotification, responses chan Respo
 			}
 			if stopping && len(limbo) == 0 {
 				//sender() is finished and so is limbo - so the connection is done.
-				log.Printf("CONN #%d - limbo: I've flushed all my notifications. Tell sender I'm done.\n", conn.id)
+        logger.Info("APNS: Connection limbo - I've flushed all my notifications. Tell sender I'm done",
+          zap.Int("connectionId", conn.id),
+        )
 				conn.ackFinished <- true
 			}
 		}
 	}
 }
 
-func (conn *Connection) requeue(queue []timedPushNotification) {						
+func (conn *Connection) requeue(queue []timedPushNotification) {
 	for _, pn := range queue {
 		conn.Enqueue(&pn.PushNotification)
 	}
 }
 
-func (conn *Connection) connect() error {
+func (conn *Connection) connect(logger zap.Logger) error {
 	if conn.conn != nil {
 		conn.conn.Close()
 	}
@@ -295,7 +328,9 @@ func (conn *Connection) connect() error {
 	}
 
 	if err != nil {
-		log.Fatal("Failed to obtain cert: %+v\n", err)
+    logger.Fatal("APNS: Failed to obtain certificate",
+      zap.Error(err),
+    )
 		return err
 	}
 
@@ -306,31 +341,41 @@ func (conn *Connection) connect() error {
 
 	connAux, err := net.Dial("tcp", conn.Gateway)
 	if err != nil {
-		log.Fatal("Failed while dialing %s with error: %+v\n", conn.Gateway, err)
+    logger.Fatal("APNS: Failed while dialing gateway",
+      zap.String("gateway", conn.Gateway),
+      zap.Error(err),
+    )
 		return err
 	}
 	tlsConn := tls.Client(connAux, conf)
 	err = tlsConn.Handshake()
 	if err != nil {
-		log.Fatal("Failed while handshaking %+v...\n", err)
+    logger.Fatal("APNS: Failed while handshaking",
+      zap.Error(err),
+    )
 		_ = tlsConn.Close()
 		return err
 	}
 	conn.conn = tlsConn
 	conn.connAux = connAux
 	//Start reader goroutine
-	go conn.reader(conn.responses)
+	go conn.reader(conn.responses, logger)
 	return nil
 }
 
-func (c *Connection) spinUntilReconnect() {
+func (c *Connection) spinUntilReconnect(logger zap.Logger) {
 	var backoff = time.Duration(100)
 	for {
-		log.Printf("CONN #%d - Connection lost; reconnecting.", c.id)
-		err := c.connect()
+    logger.Info("APNS: Connection lost. Reconnecting",
+      zap.Int("connectionId", c.id),
+    )
+		err := c.connect(logger)
 		if err != nil {
 			//Exponential backoff up to a limit
-			log.Printf("CONN #%d - APNS: Error connecting to server: ", c.id, err)
+      logger.Info("APNS: Error connecting to server",
+        zap.Int("connectionId", c.id),
+        zap.Error(err),
+      )
 			backoff = backoff * 2
 			if backoff > maxBackoff {
 				backoff = maxBackoff
@@ -338,7 +383,9 @@ func (c *Connection) spinUntilReconnect() {
 			time.Sleep(backoff)
 		} else {
 			backoff = 100
-			log.Printf("CONN #%d - Connected...", c.id)
+      logger.Info("APNS: New connnection established",
+        zap.Int("connectionId", c.id),
+      )
 			break
 		}
 	}
