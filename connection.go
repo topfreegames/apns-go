@@ -214,7 +214,12 @@ func (conn *Connection) reader(responses chan<- Response, logger zap.Logger) {
       )
 			conn.shouldReconnect <- true
 			return
-		}
+    } else if err != nil {
+      logger.Info("APNS: Connection error before reading complete response",
+        zap.Int("connectionId", conn.id),
+        zap.Error(err),
+      )
+    }
 		command := uint8(buffer[0])
 		if command != 8 {
       logger.Info("APNS: Something went wrong in a connection - Command should have been 8 but it had other value instead",
