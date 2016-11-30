@@ -383,7 +383,7 @@ func (c *Connection) spinUntilReconnect(logger zap.Logger) {
 			time.Sleep(backoff)
 		} else {
 			backoff = 100
-      logger.Info("APNS: New connnection established",
+      logger.Info("APNS: New connection established",
         zap.Int("connectionId", c.id),
       )
 			break
